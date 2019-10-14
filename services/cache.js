@@ -8,7 +8,7 @@ const client = redis.createClient(redisUrl);
 client.get = util.promisify(client.get);
 
 
-// We are using prototypal inheritance to "hijack" the exce function, so that we can add our cachin logic to it. The biggest lesson here is that you can hijack certain functions.
+// We are using prototypal inheritance to "hijack" the exce function, so that we can add our caching logic to it. The biggest lesson here is that you can hijack certain functions.
 
 // Step 1) store the "hijacked" function in a variable with the same name.
 const exec = mongoose.Query.prototype.exec;
@@ -19,12 +19,17 @@ const exec = mongoose.Query.prototype.exec;
 mongoose.Query.prototype.exec = async function () {
   // Object.assign takes the properties of the objects passed into it and assign it to the object in the first argument.
   // Here we create the key for the caching DB. It has to be unique and consistent.
-  const key = JSON.stringify(Object.assign({}, this.getQuery(), { collection: this.mongooseCollection.name}));
+  const key = JSON.stringify(Object.assign({}, this.getQuery(), { collection: this.mongooseCollection.name }));
 
   const cacheValue = await client.get(key);
 
   if (cacheValue) {
-    return JSON.parse(cacheValue);
+    //we need to return a mongoose model so we call this.model
+    const doc = JSON.parse(cacheValue)
+
+    return Array.isArray(doc)
+      ? doc.map(d => new this.model(d))
+      : new this.model(doc)
   }
 
   // we use apply so that we can pass in any arguements that passed in to exec as well.
